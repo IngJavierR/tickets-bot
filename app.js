@@ -1,4 +1,4 @@
-const { BotFrameworkAdapter, MemoryStorage, ConversationState, MessageFactory } = require('botbuilder');
+const { BotFrameworkAdapter, MemoryStorage, ConversationState, MessageFactory, CardFactory, ActionTypes } = require('botbuilder');
 const restify = require('restify');
 const dotEnv = require('dotenv');
 const botbuilder_dialogs = require('botbuilder-dialogs');
@@ -39,7 +39,6 @@ adapter.use(conversationState);
 const dialogs = new botbuilder_dialogs.DialogSet();
 dialogs.add('textPrompt', new botbuilder_dialogs.TextPrompt());
 dialogs.add('choicePrompt', new ChoicePrompt());
-var initCounter = 0;
 
 // Listen for incoming requests 
 server.post('/api/messages', (req, res) => {
@@ -60,7 +59,8 @@ server.post('/api/messages', (req, res) => {
                 if(!state.conversationActive) {
                     switch (topIntent) {
                         case 'ComprarBoletos':
-                            await context.sendActivity('Comprar boletos');
+                            state.conversationActive = true;
+                            await dc.begin('comprar_boletos', luisResults);
                             break;
                         case 'ConsultarPeliculas':
                             state.conversationActive = true;
@@ -83,14 +83,13 @@ server.post('/api/messages', (req, res) => {
             
             if (!context.responded) {
                 await dc.continue();
-                if (!context.responded && isMessage) {
+                /*if (!context.responded && isMessage) {
                     await dc.context.sendActivity(`Hi! I'm the LUIS dialog bot. Say something and LUIS will decide how the message should be routed.`);
-                }
+                }*/
             }
         }
         if(context.activity.type === 'conversationUpdate') {
-            if(initCounter === 0){
-                initCounter++;
+            if(req._dtraceId === 1){
                 var msg = `¡Hola! Qué gusto tenerte por aqui. :)	
                             <br/> Estoy aquí para ayudarte a hacer tu compra más ágil.`
                 await context.sendActivity(msg);
@@ -111,11 +110,92 @@ dialogs.add('intro', [
 //Consultar peliculas
 dialogs.add('consultar_peliculas', [
     async (dc, results, next) => {
-        await dc.begin('solicitar_ubicacion');
+        if(!conversationState.get(dc.context).selectedCinema) {
+            await dc.begin('solicitar_ubicacion');
+        }else{
+            next();
+        }
     },
     async (dc, results) => {
-        await dc.context.sendActivity(`Buscare boletos para ${results.value}`);
-        conversationState.get(dc.context).conversationState = false;
+        let location = conversationState.get(dc.context).selectedCinema;
+        await dc.context.sendActivity(`Estas son las peliculas para: ${location}`);
+
+        let messageWithCarouselOfCards = MessageFactory.carousel([
+            CardFactory.videoCard('Avengers', ['https://www.youtube.com/watch?v=QwievZ1Tx-8'], [{
+                type: ActionTypes.ImBack,
+                title: 'Comprar Boletos',
+                value: 'Comprar boletos para Avengers'
+            }]),
+            CardFactory.videoCard('Civil War', ['https://www.youtube.com/watch?v=dKrVegVI0Us'], [{
+                type: ActionTypes.ImBack,
+                title: 'Comprar Boletos',
+                value: 'Comprar boletos para Civil War'
+            }]),
+            CardFactory.videoCard('Black Panter', ['https://www.youtube.com/watch?v=xjDjIWPwcPU'], [{
+                type: ActionTypes.ImBack,
+                title: 'Comprar Boletos',
+                value: 'Comprar boletos para Black Panter'
+            }])
+        ]);        
+        await dc.context.sendActivity(messageWithCarouselOfCards);
+
+        conversationState.get(dc.context).conversationActive = false;
+        await dc.endAll();
+    }
+]);
+
+//Comprar boletos
+dialogs.add('comprar_boletos', [
+    async (dc, results, next) => {
+        const movies = utils.findEntities('Pelicula', results.entities);
+        if(movies.length > 0){
+            conversationState.get(dc.context).selectedMovie = movies[0];
+            next();
+        }else{
+            await dc.begin('consultar_peliculas');
+        }
+    },
+    async (dc, results, next) => {
+        if(!conversationState.get(dc.context).selectedDay) {
+            await dc.begin('solicitar_dia');
+        }else{
+            next();
+        }
+    },
+    async (dc, results, next) => {
+        if(!conversationState.get(dc.context).selectedTime) {
+            await dc.begin('solicitar_horario');
+        }else{
+            next();
+        }
+    },
+    async (dc, results, next) => {
+        await dc.context.sendActivity('Comprando boletos');
+        conversationState.get(dc.context).conversationActive = false;
+        await dc.endAll();
+    }
+]);
+
+//Solicitar dia
+dialogs.add('solicitar_dia', [
+    async (dc) => {
+        const listOptions = ['Hoy', 'Mañana', 'Pasado mañana'];
+        await dc.prompt('choicePrompt', '¿Para que día quieres los boletos?', listOptions, {retryPrompt: 'Por favor selecciona un día'});
+    },
+    async (dc, results) => {
+        conversationState.get(dc.context).selectedDay = results.value;
+        await dc.end();
+    }
+]);
+
+//Solicitar horario
+dialogs.add('solicitar_horario', [
+    async (dc) => {
+        const listOptions = ['10:00', '14:00', '18:00'];
+        await dc.prompt('choicePrompt', '¿A que hora quieres ver la pelicula?', listOptions, {retryPrompt: 'Por favor selecciona un horario'});
+    },
+    async (dc, results) => {
+        conversationState.get(dc.context).selectedTime = results.value;
         await dc.end();
     }
 ]);
@@ -134,7 +214,8 @@ dialogs.add('solicitar_ubicacion', [
         await dc.prompt('choicePrompt', '¿En qué cine te gustaría asistir?', listOptions, {retryPrompt: 'Por favor selecciona una cine'});
     },
     async (dc, results) => {
-        await dc.end(results);
+        conversationState.get(dc.context).selectedCinema = results.value;
+        await dc.end();
     }
 ]);
 
