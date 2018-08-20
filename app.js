@@ -56,29 +56,41 @@ server.post('/api/messages', (req, res) => {
 
             const isMessage = context.activity.type === 'message';
             if (isMessage) {
-                if(!state.conversationActive) {
+                
                     switch (topIntent) {
                         case 'ComprarBoletos':
                             state.conversationActive = true;
+                            await dc.endAll();
                             await dc.begin('comprar_boletos', luisResults);
                             break;
                         case 'ConsultarPeliculas':
                             state.conversationActive = true;
+                            await dc.endAll();
                             await dc.begin('consultar_peliculas', luisResults);
                             break;
                         case 'Estrenos':
+                            await dc.endAll();
                             await dc.begin('consultar_estrenos', luisResults);
                             break;
-                        case 'None':
-                            await context.sendActivity('No te entendi');
+                        case 'Promociones':
+                            await dc.endAll();
+                            await dc.begin('consultar_promociones', luisResults);
                             break;
-                        case 'null':
-                            await context.sendActivity('Failed');
+                        case 'Combos':
+                            await dc.endAll();
+                            await dc.begin('consultar_combos', luisResults);
+                            break;
+                        case 'None':
+                            if(!state.conversationActive) {
+                                await context.sendActivity('No te entendi');
+                            }
+                            break;
+                        case 'NotFound':
+                            await context.sendActivity('No te entendi');
                             break;
                         default:
                             await context.sendActivity(`The top intent was ${topIntent}`);
                     }
-                }
             }
             
             if (!context.responded) {
@@ -89,7 +101,7 @@ server.post('/api/messages', (req, res) => {
             }
         }
         if(context.activity.type === 'conversationUpdate') {
-            if(req._dtraceId === 1){
+            if(context.activity.membersAdded && context.activity.membersAdded.filter(x => x.id === context.activity.recipient.id).length === 0){
                 var msg = `¡Hola! Qué gusto tenerte por aqui. :)	
                             <br/> Estoy aquí para ayudarte a hacer tu compra más ágil.`
                 await context.sendActivity(msg);
@@ -118,7 +130,9 @@ dialogs.add('consultar_peliculas', [
     },
     async (dc, results) => {
         let location = conversationState.get(dc.context).selectedCinema;
-        await dc.context.sendActivity(`Estas son las peliculas para: ${location}`);
+        if(location) {
+            await dc.context.sendActivity(`Estas son las peliculas para: ${location}`);
+        }
 
         let messageWithCarouselOfCards = MessageFactory.carousel([
             CardFactory.videoCard('Avengers', ['https://www.youtube.com/watch?v=QwievZ1Tx-8'], [{
@@ -156,6 +170,13 @@ dialogs.add('comprar_boletos', [
         }
     },
     async (dc, results, next) => {
+        if(!conversationState.get(dc.context).selectedCinema) {
+            await dc.begin('solicitar_ubicacion');
+        }else{
+            next();
+        }
+    },
+    async (dc, results, next) => {
         if(!conversationState.get(dc.context).selectedDay) {
             await dc.begin('solicitar_dia');
         }else{
@@ -170,7 +191,12 @@ dialogs.add('comprar_boletos', [
         }
     },
     async (dc, results, next) => {
-        await dc.context.sendActivity('Comprando boletos');
+        var msg = `Comprando boletos
+                    <br/> Pelicula: ${conversationState.get(dc.context).selectedMovie}
+                    <br/> Dia: ${conversationState.get(dc.context).selectedDay}
+                    <br/> Horario: ${conversationState.get(dc.context).selectedTime}
+                    <br/> Cine: ${conversationState.get(dc.context).selectedCinema}`
+        await dc.context.sendActivity(msg);
         conversationState.get(dc.context).conversationActive = false;
         await dc.endAll();
     }
@@ -183,7 +209,7 @@ dialogs.add('solicitar_dia', [
         await dc.prompt('choicePrompt', '¿Para que día quieres los boletos?', listOptions, {retryPrompt: 'Por favor selecciona un día'});
     },
     async (dc, results) => {
-        conversationState.get(dc.context).selectedDay = results.value;
+        conversationState.get(dc.context).selectedDay = results && results.value;
         await dc.end();
     }
 ]);
@@ -203,7 +229,25 @@ dialogs.add('solicitar_horario', [
 //Consultar estrenos
 dialogs.add('consultar_estrenos', [
     async (dc, results, next) => {
-        console.log('estrenos', locations);
+        await dc.context.sendActivity('Estos son los estrenos');
+        let messageWithCarouselOfCards = MessageFactory.carousel([
+            CardFactory.videoCard('Avengers', ['https://www.youtube.com/watch?v=QwievZ1Tx-8'], [{
+                type: ActionTypes.ImBack,
+                title: 'Comprar Estreno',
+                value: 'Comprar boletos para Avengers'
+            }]),
+            CardFactory.videoCard('Civil War', ['https://www.youtube.com/watch?v=dKrVegVI0Us'], [{
+                type: ActionTypes.ImBack,
+                title: 'Comprar Estreno',
+                value: 'Comprar boletos para Civil War'
+            }]),
+            CardFactory.videoCard('Black Panter', ['https://www.youtube.com/watch?v=xjDjIWPwcPU'], [{
+                type: ActionTypes.ImBack,
+                title: 'Comprar Estreno',
+                value: 'Comprar boletos para Black Panter'
+            }])
+        ]);        
+        await dc.context.sendActivity(messageWithCarouselOfCards);
         await dc.end();
     }
 ]);
@@ -214,8 +258,21 @@ dialogs.add('solicitar_ubicacion', [
         await dc.prompt('choicePrompt', '¿En qué cine te gustaría asistir?', listOptions, {retryPrompt: 'Por favor selecciona una cine'});
     },
     async (dc, results) => {
-        conversationState.get(dc.context).selectedCinema = results.value;
+        conversationState.get(dc.context).selectedCinema = results && results.value;
         await dc.end();
     }
 ]);
 
+dialogs.add('consultar_promociones', [
+    async (dc) => {
+        await dc.sendActivity('Mostrando Promociones');
+        await dc.end();
+    }
+]);
+
+dialogs.add('consultar_combos', [
+    async (dc) => {
+        await dc.sendActivity('Mostrando Combos');
+        await dc.end();
+    }
+]);
