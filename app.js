@@ -112,6 +112,16 @@ server.post('/api/messages', (req, res) => {
 });
 
 //Introduccion
+dialogs.add('main-menu', [
+    async (dc) => {
+        var msg = `En que mas puedo ayudarte. :)	
+                    <br/> Estoy aquí para ayudarte a hacer tu compra más ágil.`
+        await dc.context.sendActivity(msg);
+        await dc.begin('intro');
+    }
+]);
+
+//Introduccion
 dialogs.add('intro', [
     async (dc) => {
         const listOptions = ['Peliculas', 'Estrenos', 'Promociones', 'Combos'];
@@ -265,14 +275,14 @@ dialogs.add('solicitar_ubicacion', [
 
 dialogs.add('consultar_promociones', [
     async (dc) => {
-        await dc.sendActivity('Mostrando Promociones');
-        await dc.end();
+        await dc.context.sendActivity('Mostrando Promociones');
+        await dc.endAll().begin('main-menu');
     }
 ]);
 
 dialogs.add('consultar_combos', [
     async (dc) => {
-        await dc.sendActivity('Mostrando Combos');
+        await dc.context.sendActivity('Mostrando Combos');
         await dc.end();
     }
 ]);
