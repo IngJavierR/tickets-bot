@@ -3,7 +3,7 @@ const restify = require('restify');
 const dotEnv = require('dotenv');
 const botbuilder_dialogs = require('botbuilder-dialogs');
 const {ChoicePrompt} = require("botbuilder-dialogs");
-const { LuisRecognizer } = require('botbuilder-ai');
+const { LuisRecognizer, QnAMaker } = require('botbuilder-ai');
 var utils = require('./utils');
 
 // Create server
@@ -18,6 +18,7 @@ const adapter = new BotFrameworkAdapter({
     appId: '',//process.env.MICROSOFT_APP_ID, 
     appPassword: ''//process.env.MICROSOFT_APP_PASSWORD 
 });
+
 
 //configurar LUIS
 const luisRecognizer = new LuisRecognizer({
@@ -43,6 +44,7 @@ dialogs.add('choicePrompt', new ChoicePrompt());
 // Listen for incoming requests 
 server.post('/api/messages', (req, res) => {
     // Route received request to adapter for processing
+    
     adapter.processActivity(req, res, async (context) => {
         const state = conversationState.get(context);
         const dc = dialogs.createContext(context, state);
@@ -264,6 +266,26 @@ dialogs.add('consultar_estrenos', [
 
 dialogs.add('solicitar_ubicacion', [
     async (dc) => {
+        
+        if(dc.context.activity.channelId === 'facebook'){
+            dc.context.sendActivity({
+                text: 'Comparte tu ubicacion',
+                channelData: {
+                    quick_replies: [{
+                        content_type: 'location',
+                        title: '',
+                        payload: ''
+                    }]
+                }
+            });
+            dc.context.onSendActivities((ctx, activities, next) => {
+                ctx.activity.entities.filter(x => x.type == 'Place');
+            })
+        }else {
+            
+        }
+        
+
         const listOptions = ['Toreo', 'Hollywood', 'Plaza Carso', 'VIP Plaza Carso'];
         await dc.prompt('choicePrompt', '¿En qué cine te gustaría asistir?', listOptions, {retryPrompt: 'Por favor selecciona una cine'});
     },
@@ -275,8 +297,47 @@ dialogs.add('solicitar_ubicacion', [
 
 dialogs.add('consultar_promociones', [
     async (dc) => {
-        await dc.context.sendActivity('Mostrando Promociones');
-        await dc.endAll().begin('main-menu');
+        await dc.context.sendActivity('Estas son algunas promociones');
+        let promocionesCards = MessageFactory.carousel([
+            CardFactory.heroCard('Takis Fuego', ['https://static.cinepolis.com/img/promociones/1/201875162336220.jpg'], [
+                {
+                    type: ActionTypes.ImBack,
+                    title: 'Saber Más',
+                    value: 'Saber Más Takis Fuego'
+                },
+                {
+                    type: ActionTypes.ImBack,
+                    title: 'Comprar',
+                    value: 'Comprar Takis Fuego'
+                }
+            ]),
+            CardFactory.heroCard('Emociones', ['https://static.cinepolis.com/img/promociones/1/201861512619245.jpg'], [
+                {
+                    type: ActionTypes.ImBack,
+                    title: 'Saber Más',
+                    value: 'Saber Más Emociones'
+                },
+                {
+                    type: ActionTypes.ImBack,
+                    title: 'Comprar',
+                    value: 'Comprar Emociones'
+                }
+            ]),
+            CardFactory.heroCard('Combo mundial', ['https://static.cinepolis.com/img/promociones/1/2018525124934994.jpg'], [
+                {
+                    type: ActionTypes.ImBack,
+                    title: 'Saber Más',
+                    value: 'Saber Más Combo mundial'
+                },
+                {
+                    type: ActionTypes.ImBack,
+                    title: 'Comprar',
+                    value: 'Comprar Combo mundial'
+                }
+            ])
+        ]);
+        await dc.context.sendActivity(promocionesCards);
+        //await dc.endAll().begin('main-menu');
     }
 ]);
 
